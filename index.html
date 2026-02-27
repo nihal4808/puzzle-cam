@@ -860,7 +860,7 @@
             const el = document.elementFromPoint(x, y);
             if (!el) return false;
             const btn = el.closest('button, .resize-btn, .redraw-btn, .close-board span, #btnSaveScore, #btnFullscreen');
-            if (btn && btn.offsetParent !== null) {
+            if (btn) {
                 btn.click();
                 clearButtonHover();
                 return true;
