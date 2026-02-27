@@ -205,9 +205,28 @@
             pointer-events: all;
         }
 
-        #btnLeaderboard:hover {
+        #btnLeaderboard:hover,
+        #btnFullscreen:hover {
             background: var(--neon);
             color: #000;
+        }
+
+        /* Fullscreen button */
+        #btnFullscreen {
+            position: fixed;
+            top: 15px;
+            right: 125px;
+            /* next to leaderboard */
+            z-index: 60;
+            background: rgba(0, 0, 0, 0.6);
+            color: var(--neon);
+            border: 1px solid var(--neon);
+            padding: 6px 12px;
+            font-family: var(--font);
+            font-size: 12px;
+            text-transform: uppercase;
+            cursor: pointer;
+            pointer-events: all;
         }
 
         /* Leaderboard panel */
@@ -461,6 +480,9 @@
     <!-- Leaderboard button -->
     <button id="btnLeaderboard">Leaderboard</button>
 
+    <!-- Fullscreen button -->
+    <button id="btnFullscreen">[ ] FULLSCREEN</button>
+
     <!-- Hidden video -->
     <video id="hiddenVideo" width="640" height="480" autoplay playsinline muted></video>
 
@@ -655,6 +677,7 @@
             startBtn: document.getElementById('startBtn'),
             instructions: document.getElementById('instructions'),
             btnLeaderboard: document.getElementById('btnLeaderboard'),
+            btnFullscreen: document.getElementById('btnFullscreen'),
             leaderboardPanel: document.getElementById('leaderboardPanel'),
             btnCloseBoard: document.getElementById('btnCloseBoard'),
             winModal: document.getElementById('winModal'),
@@ -683,6 +706,7 @@
 
             DOM.startBtn.addEventListener('click', startPuzzle);
             DOM.btnLeaderboard.addEventListener('click', () => DOM.leaderboardPanel.classList.add('open'));
+            DOM.btnFullscreen.addEventListener('click', toggleFullscreen);
             DOM.btnCloseBoard.addEventListener('click', () => DOM.leaderboardPanel.classList.remove('open'));
             DOM.btnSaveScore.addEventListener('click', saveScore);
             DOM.btnSmaller.addEventListener('click', () => resizeBox(-40));
@@ -835,7 +859,7 @@
         function tryClickButton(x, y) {
             const el = document.elementFromPoint(x, y);
             if (!el) return false;
-            const btn = el.closest('button, .resize-btn, .redraw-btn, .close-board span, #btnSaveScore');
+            const btn = el.closest('button, .resize-btn, .redraw-btn, .close-board span, #btnSaveScore, #btnFullscreen');
             if (btn && btn.offsetParent !== null) {
                 btn.click();
                 clearButtonHover();
@@ -848,6 +872,18 @@
                 return true;
             }
             return false;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch((err) => {
+                    console.log(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
         }
 
         // ===========================================
