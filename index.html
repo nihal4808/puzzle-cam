@@ -761,21 +761,21 @@
             const vw = state.videoWidth, vh = state.videoHeight;
             const sw = window.innerWidth, sh = window.innerHeight;
 
-            // Cover-fit: find how the video maps to the screen
+            // Contain-fit: find how the video maps to the screen
             const screenAspect = sw / sh;
             const videoAspect = vw / vh;
 
             let drawW, drawH, offsetX, offsetY;
             if (screenAspect > videoAspect) {
-                drawW = sw;
-                drawH = sw / videoAspect;
-                offsetX = 0;
-                offsetY = (sh - drawH) / 2;
-            } else {
                 drawH = sh;
                 drawW = sh * videoAspect;
                 offsetX = (sw - drawW) / 2;
                 offsetY = 0;
+            } else {
+                drawW = sw;
+                drawH = sw / videoAspect;
+                offsetX = 0;
+                offsetY = (sh - drawH) / 2;
             }
 
             // Reverse the mirror: screen is mirrored, so un-mirror X
@@ -993,16 +993,16 @@
             const vw = state.videoWidth, vh = state.videoHeight;
             const sw = window.innerWidth, sh = window.innerHeight;
 
-            // Calculate cover-fit mapping
+            // Calculate contain-fit mapping
             const screenAspect = sw / sh;
             const videoAspect = vw / vh;
             let drawW, drawH, offsetX, offsetY;
             if (screenAspect > videoAspect) {
-                drawW = sw; drawH = sw / videoAspect;
-                offsetX = 0; offsetY = (sh - drawH) / 2;
-            } else {
                 drawH = sh; drawW = sh * videoAspect;
                 offsetX = (sw - drawW) / 2; offsetY = 0;
+            } else {
+                drawW = sw; drawH = sw / videoAspect;
+                offsetX = 0; offsetY = (sh - drawH) / 2;
             }
 
             // Map box screen coords to video source coords (un-mirror X)
@@ -1038,17 +1038,17 @@
             const sw = window.innerWidth, sh = window.innerHeight;
             const vw = state.videoWidth, vh = state.videoHeight;
 
-            // Draw mirrored camera feed on full-screen canvas
+            // Draw mirrored camera feed on full-screen canvas with contain-fit
             if (vw && vh) {
                 const screenAspect = sw / sh;
                 const videoAspect = vw / vh;
                 let drawW, drawH, offsetX, offsetY;
                 if (screenAspect > videoAspect) {
-                    drawW = sw; drawH = sw / videoAspect;
-                    offsetX = 0; offsetY = (sh - drawH) / 2;
-                } else {
                     drawH = sh; drawW = sh * videoAspect;
                     offsetX = (sw - drawW) / 2; offsetY = 0;
+                } else {
+                    drawW = sw; drawH = sw / videoAspect;
+                    offsetX = 0; offsetY = (sh - drawH) / 2;
                 }
 
                 camCtx.save();
