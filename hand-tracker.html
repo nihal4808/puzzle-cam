@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Tracker & Pinch Drag Controller</title>
+
+    <!-- MediaPipe Hands CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #1a1a1a;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+
+        button:active {
+            background: #45a049;
+        }
+
+        button.stop {
+            background: #f44336;
+        }
+
+        .container {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            border: 2px solid #333;
+            background-color: #000;
+            overflow: hidden;
+        }
+
+        /* The transparent canvas for drawing the skeleton */
+        #handCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* An example interactive element inside the container */
+        .draggable-box {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            background-color: #2196F3;
+            border: 2px solid #fff;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            user-select: none;
+            left: 280px;
+            top: 200px;
+            z-index: 5;
+        }
+
+        .draggable-box.grabbed {
+            background-color: #ff9800;
+            box-shadow: 0 0 15px #ff9800;
+            transform: scale(1.1);
+            transition: transform 0.1s ease, background-color 0.1s ease;
+            z-index: 20;
+        }
+
+        #status {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #aaa;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>Hand Tracking Pinch Controller Module</h2>
+
+    <div class="controls">
+        <button id="btnStart">Start Camera</button>
+        <button id="btnStop" class="stop">Stop Camera</button>
+    </div>
+
+    <!-- The area where interaction happens -->
+    <div class="container" id="interactionZone">
+        <canvas id="handCanvas" width="640" height="480"></canvas>
+        <div class="draggable-box" id="testBox">DRAG ME</div>
+    </div>
+
+    <div id="status">Status: Waiting to start...</div>
+
+    <script>
+        /**
+         * Standalone Hand Tracking + Pinch Drag Controller Module
+         */
+        class HandTracker {
+            constructor(options) {
+                // Main visual canvas for rendering the skeleton
+                this.canvasElement = options.canvasElement;
+                this.ctx = this.canvasElement.getContext('2d');
+
+                // Callbacks
+                this.onGrab = options.onGrab || (() => { });
+                this.onMove = options.onMove || (() => { });
+                this.onRelease = options.onRelease || (() => { });
+
+                // Internal State
+                this.videoElement = null;
+                this.camera = null;
+                this.hands = null;
+
+                // Pinch Hysteresis State
+                this.isPinching = false;
+                this.grabThreshold = 30; // pixels
+                this.releaseThreshold = 50; // pixels
+
+                // Keep track of the grab location
+                this.lastX = 0;
+                this.lastY = 0;
+
+                // Animation frame for skeleton rendering
+                this.animationFrameId = null;
+                this.currentLandmarks = null;
+
+                this._onResultsBound = this._onResults.bind(this);
+                this._renderLoopBound = this._renderLoop.bind(this);
+            }
+
+            initCamera() {
+                // Create a hidden video element
+                this.videoElement = document.createElement('video');
+                this.videoElement.style.display = 'none';
+                this.videoElement.width = 640;
+                this.videoElement.height = 480;
+                this.videoElement.autoplay = true;
+                this.videoElement.playsInline = true;
+                document.body.appendChild(this.videoElement);
+
+                this.camera = new Camera(this.videoElement, {
+                    onFrame: async () => {
+                        if (this.hands) {
+                            await this.hands.send({ image: this.videoElement });
+                        }
+                    },
+                    width: 640,
+                    height: 480
+                });
+            }
+
+            initHands() {
+                this.hands = new Hands({
+                    locateFile: (file) => {
+                        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                    }
+                });
+
+                this.hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.7,
+                    minTrackingConfidence: 0.7
+                });
+
+                this.hands.onResults(this._onResultsBound);
+            }
+
+            _onResults(results) {
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    // Get the first hand, and mirror the X coordinates 
+                    // since the camera feed implicitly mirrors the user visually.
+                    const rawLandmarks = results.multiHandLandmarks[0];
+                    this.currentLandmarks = rawLandmarks.map(landmark => ({
+                        x: 1 - landmark.x, // Mirror horizontally
+                        y: landmark.y,
+                        z: landmark.z
+                    }));
+
+                    this.detectPinch(this.currentLandmarks);
+                } else {
+                    this.currentLandmarks = null;
+                    // If we lose tracking while pinching, force a release
+                    if (this.isPinching) {
+                        this.isPinching = false;
+                        this.onRelease(this.lastX, this.lastY);
+                    }
+                }
+            }
+
+            detectPinch(landmarks) {
+                // Landmark 8: Index finger tip, Landmark 4: Thumb tip
+                const p8 = landmarks[8];
+                const p4 = landmarks[4];
+
+                // Convert normalized coordinates to specific canvas pixel dimensions
+                const canvasW = this.canvasElement.width;
+                const canvasH = this.canvasElement.height;
+
+                const x8 = p8.x * canvasW;
+                const y8 = p8.y * canvasH;
+                const x4 = p4.x * canvasW;
+                const y4 = p4.y * canvasH;
+
+                // Midpoint for dragging interaction
+                const midX = (x8 + x4) / 2;
+                const midY = (y8 + y4) / 2;
+
+                this.lastX = midX;
+                this.lastY = midY;
+
+                // Euclidean distance in pixels
+                const distance = Math.hypot(x8 - x4, y8 - y4);
+
+                // Hysteresis logic
+                if (!this.isPinching && distance < this.grabThreshold) {
+                    this.isPinching = true;
+                    this.onGrab(midX, midY);
+                } else if (this.isPinching && distance > this.releaseThreshold) {
+                    this.isPinching = false;
+                    this.onRelease(midX, midY);
+                }
+
+                // If actively pinching, update move
+                if (this.isPinching) {
+                    this.onMove(midX, midY);
+                }
+            }
+
+            _renderLoop() {
+                // Clear the canvas cleanly
+                this.ctx.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+
+                // Draw skeleton if we have current landmarks
+                if (this.currentLandmarks) {
+                    this.ctx.save();
+                    drawConnectors(this.ctx, this.currentLandmarks, HAND_CONNECTIONS, { color: '#ffffff', lineWidth: 3 });
+                    drawLandmarks(this.ctx, this.currentLandmarks, { color: '#ffffff', lineWidth: 1, radius: 4 });
+
+                    // Highlight the pinch points slightly
+                    const p8 = this.currentLandmarks[8];
+                    const p4 = this.currentLandmarks[4];
+                    const w = this.canvasElement.width;
+                    const h = this.canvasElement.height;
+
+                    this.ctx.beginPath();
+                    this.ctx.arc(p8.x * w, p8.y * h, 6, 0, 2 * Math.PI);
+                    this.ctx.fillStyle = this.isPinching ? '#0f0' : '#ff0';
+                    this.ctx.fill();
+
+                    this.ctx.beginPath();
+                    this.ctx.arc(p4.x * w, p4.y * h, 6, 0, 2 * Math.PI);
+                    this.ctx.fillStyle = this.isPinching ? '#0f0' : '#ff0';
+                    this.ctx.fill();
+
+                    this.ctx.restore();
+                }
+
+                this.animationFrameId = requestAnimationFrame(this._renderLoopBound);
+            }
+
+            async start() {
+                if (!this.hands) this.initHands();
+                if (!this.camera) this.initCamera();
+
+                // Start drawing loop
+                if (!this.animationFrameId) {
+                    this.animationFrameId = requestAnimationFrame(this._renderLoopBound);
+                }
+
+                await this.hands.initialize();
+                await this.camera.start();
+            }
+
+            stop() {
+                // Stop camera stream tracks
+                if (this.videoElement && this.videoElement.srcObject) {
+                    const tracks = this.videoElement.srcObject.getTracks();
+                    tracks.forEach(track => track.stop());
+                }
+                if (this.camera) {
+                    this.camera.stop();
+                    this.camera = null;
+                }
+
+                // Close MP instance properly
+                if (this.hands) {
+                    this.hands.close();
+                    this.hands = null;
+                }
+
+                if (this.videoElement) {
+                    this.videoElement.remove();
+                    this.videoElement = null;
+                }
+
+                // Stop rendering loop
+                if (this.animationFrameId) {
+                    cancelAnimationFrame(this.animationFrameId);
+                    this.animationFrameId = null;
+                }
+
+                // Force release
+                if (this.isPinching) {
+                    this.isPinching = false;
+                    this.onRelease(this.lastX, this.lastY);
+                }
+
+                this.ctx.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+                this.currentLandmarks = null;
+            }
+        }
+
+        // ==========================================
+        // EXAMPLE USAGE INTERFACE
+        // ==========================================
+
+        const canvasEl = document.getElementById('handCanvas');
+        const box = document.getElementById('testBox');
+        const btnStart = document.getElementById('btnStart');
+        const btnStop = document.getElementById('btnStop');
+        const statusEl = document.getElementById('status');
+
+        let isGrabbed = false;
+        let grabOffsetX = 0;
+        let grabOffsetY = 0;
+
+        // Initialize the Tracker
+        const tracker = new HandTracker({
+            canvasElement: canvasEl,
+            onGrab: (x, y) => {
+                // Check if the pinch occurred over our draggable box
+                const rect = box.getBoundingClientRect();
+                const containerRect = canvasEl.parentElement.getBoundingClientRect();
+
+                // Convert screen coordinates of box to relative container coordinates 
+                // to compare with the canvas pixel coordinates (x, y)
+                const boxLeft = rect.left - containerRect.left;
+                const boxTop = rect.top - containerRect.top;
+                const boxRight = boxLeft + rect.width;
+                const boxBottom = boxTop + rect.height;
+
+                if (x >= boxLeft && x <= boxRight && y >= boxTop && y <= boxBottom) {
+                    isGrabbed = true;
+                    box.classList.add('grabbed');
+
+                    // Calculate offset so the box doesn't snap its top-left to the pinch point
+                    grabOffsetX = x - boxLeft;
+                    grabOffsetY = y - boxTop;
+
+                    statusEl.innerText = 'Status: Box grabbed!';
+                }
+            },
+            onMove: (x, y) => {
+                if (isGrabbed) {
+                    // Move the box, restricting it within the container bounds
+                    const containerW = canvasEl.width;
+                    const containerH = canvasEl.height;
+                    const boxW = box.offsetWidth;
+                    const boxH = box.offsetHeight;
+
+                    let newX = x - grabOffsetX;
+                    let newY = y - grabOffsetY;
+
+                    // Clamp to edges
+                    newX = Math.max(0, Math.min(newX, containerW - boxW));
+                    newY = Math.max(0, Math.min(newY, containerH - boxH));
+
+                    box.style.left = `${newX}px`;
+                    box.style.top = `${newY}px`;
+                }
+            },
+            onRelease: (x, y) => {
+                if (isGrabbed) {
+                    isGrabbed = false;
+                    box.classList.remove('grabbed');
+                    statusEl.innerText = 'Status: Tracking hand...';
+                }
+            }
+        });
+
+        // Event Listeners for controls
+        btnStart.addEventListener('click', async () => {
+            statusEl.innerText = 'Status: Starting camera and initializing models... Please wait.';
+            btnStart.disabled = true;
+            try {
+                await tracker.start();
+                statusEl.innerText = 'Status: Tracking hand... (Show hand to camera)';
+            } catch (err) {
+                console.error(err);
+                statusEl.innerText = 'Status: Error starting camera or models.';
+            } finally {
+                btnStart.disabled = false;
+            }
+        });
+
+        btnStop.addEventListener('click', () => {
+            tracker.stop();
+            // Reset box state just in case
+            if (isGrabbed) {
+                isGrabbed = false;
+                box.classList.remove('grabbed');
+            }
+            statusEl.innerText = 'Status: Camera stopped.';
+        });
+    </script>
+</body>
+
+</html>
