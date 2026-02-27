@@ -382,9 +382,43 @@
             pointer-events: all;
         }
 
-        .redraw-btn:hover {
+        .redraw-btn:hover,
+        .redraw-btn.hand-hover {
             background: var(--neon-yellow);
             color: #000;
+        }
+
+        /* Hand cursor indicator */
+        #handCursor {
+            position: fixed;
+            width: 28px;
+            height: 28px;
+            border: 2px solid var(--neon);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 999;
+            display: none;
+            transform: translate(-50%, -50%);
+            transition: width 0.15s, height 0.15s, background 0.15s;
+        }
+
+        #handCursor.pinching {
+            width: 18px;
+            height: 18px;
+            background: rgba(0, 255, 0, 0.5);
+            box-shadow: 0 0 15px var(--neon);
+        }
+
+        /* Button hover effect from hand */
+        button.hand-hover,
+        .resize-btn.hand-hover {
+            box-shadow: 0 0 20px var(--neon);
+            transform: scale(1.1);
+        }
+
+        #startBtn.hand-hover {
+            box-shadow: 0 0 30px var(--neon-yellow), 0 0 60px rgba(255, 255, 0, 0.4);
+            transform: scale(1.15);
         }
     </style>
 </head>
@@ -417,6 +451,9 @@
         <button class="resize-btn" id="btnBigger" title="Bigger">+</button>
         <button class="redraw-btn" id="btnRedraw">↻ Redraw</button>
     </div>
+
+    <!-- Hand cursor indicator -->
+    <div id="handCursor"></div>
 
     <!-- Instructions -->
     <div id="instructions">✋ PINCH to draw a box on screen</div>
@@ -459,6 +496,7 @@
                 this.onGrab = options.onGrab || (() => { });
                 this.onMove = options.onMove || (() => { });
                 this.onRelease = options.onRelease || (() => { });
+                this.onHandMove = options.onHandMove || (() => { });
 
                 this.camera = null;
                 this.hands = null;
@@ -516,6 +554,7 @@
                         this.isPinching = false;
                         this.onRelease(this.lastX, this.lastY);
                     }
+                    this.onHandMove(-1, -1, false); // Hand lost
                 }
             }
 
@@ -536,6 +575,9 @@
                     this.onRelease(midX, midY);
                 }
                 if (this.isPinching) this.onMove(midX, midY);
+
+                // Always report hand position
+                this.onHandMove(midX, midY, this.isPinching);
             }
 
             _renderLoop() {
@@ -624,7 +666,8 @@
             resizeControls: document.getElementById('resizeControls'),
             btnSmaller: document.getElementById('btnSmaller'),
             btnBigger: document.getElementById('btnBigger'),
-            btnRedraw: document.getElementById('btnRedraw')
+            btnRedraw: document.getElementById('btnRedraw'),
+            handCursor: document.getElementById('handCursor')
         };
 
         const camCtx = DOM.cameraCanvas.getContext('2d');
@@ -662,7 +705,8 @@
                 videoElement: DOM.video,
                 onGrab: onPinchGrab,
                 onMove: onPinchMove,
-                onRelease: onPinchRelease
+                onRelease: onPinchRelease,
+                onHandMove: onHandMove
             });
 
             // Wait for video ready
@@ -744,10 +788,76 @@
         }
 
         // ===========================================
+        // HAND CURSOR & BUTTON HOVER
+        // ===========================================
+
+        let lastHoveredBtn = null;
+
+        function onHandMove(x, y, isPinching) {
+            if (x < 0) {
+                // Hand lost
+                DOM.handCursor.style.display = 'none';
+                clearButtonHover();
+                return;
+            }
+
+            // Show and position cursor
+            DOM.handCursor.style.display = 'block';
+            DOM.handCursor.style.left = `${x}px`;
+            DOM.handCursor.style.top = `${y}px`;
+
+            if (isPinching) {
+                DOM.handCursor.classList.add('pinching');
+            } else {
+                DOM.handCursor.classList.remove('pinching');
+            }
+
+            // Check for button hover
+            const el = document.elementFromPoint(x, y);
+            const btn = el ? el.closest('button, .resize-btn, .redraw-btn, .close-board span') : null;
+
+            if (btn !== lastHoveredBtn) {
+                clearButtonHover();
+                if (btn) {
+                    btn.classList.add('hand-hover');
+                    lastHoveredBtn = btn;
+                }
+            }
+        }
+
+        function clearButtonHover() {
+            if (lastHoveredBtn) {
+                lastHoveredBtn.classList.remove('hand-hover');
+                lastHoveredBtn = null;
+            }
+        }
+
+        function tryClickButton(x, y) {
+            const el = document.elementFromPoint(x, y);
+            if (!el) return false;
+            const btn = el.closest('button, .resize-btn, .redraw-btn, .close-board span, #btnSaveScore');
+            if (btn && btn.offsetParent !== null) {
+                btn.click();
+                clearButtonHover();
+                return true;
+            }
+            // Check if clicking on name input in modal
+            const input = el.closest('input');
+            if (input) {
+                input.focus();
+                return true;
+            }
+            return false;
+        }
+
+        // ===========================================
         // PINCH GESTURE HANDLERS
         // ===========================================
 
         function onPinchGrab(x, y) {
+            // First check if pinching on a button
+            if (tryClickButton(x, y)) return;
+
             if (state.phase === "drawing" || state.phase === "ready") {
                 // Start drawing / redrawing a box
                 if (state.phase === "ready") {
