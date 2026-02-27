@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Puzzle Game</title>
+    <title>Live Puzzle Cam</title>
 
     <!-- MediaPipe Hands CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -13,150 +13,58 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         :root {
-            --bg-color: #000;
-            --text-color: #0f0;
-            --highlight: #ff0;
-            --board-size: min(90vw, 90vh, 500px);
-            --font-main: "Courier New", Courier, monospace;
+            --neon: #0f0;
+            --neon-yellow: #ff0;
+            --font: "Courier New", Courier, monospace;
         }
 
         body {
-            margin: 0;
-            padding: 0;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            font-family: var(--font-main);
+            background: #000;
+            color: var(--neon);
+            font-family: var(--font);
             overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
+            width: 100vw;
             height: 100vh;
             cursor: none;
         }
 
-        header {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-            width: 100%;
-            max-width: var(--board-size);
-            padding: 12px;
-            box-sizing: border-box;
-            z-index: 10;
-        }
-
-        @media (min-width: 600px) {
-            header {
-                flex-direction: row;
-                justify-content: space-between;
-                align-items: flex-end;
-            }
-        }
-
-        .controls {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        button {
-            background: transparent;
-            color: var(--text-color);
-            border: 1px solid var(--text-color);
-            padding: 8px 16px;
-            cursor: pointer;
-            font-family: inherit;
-            font-size: 14px;
-            text-transform: uppercase;
-            transition: all 0.2s;
-        }
-
-        button:hover {
-            background: var(--text-color);
-            color: var(--bg-color);
-            box-shadow: 0 0 10px var(--text-color);
-        }
-
-        button.start-btn {
-            font-size: 22px;
-            padding: 14px 40px;
-            border: 2px solid var(--highlight);
-            color: var(--highlight);
-            letter-spacing: 3px;
-            animation: pulseGlow 1.5s ease-in-out infinite;
-        }
-
-        button.start-btn:hover {
-            background: var(--highlight);
-            color: var(--bg-color);
-            box-shadow: 0 0 25px var(--highlight);
-        }
-
-        @keyframes pulseGlow {
-
-            0%,
-            100% {
-                box-shadow: 0 0 8px var(--highlight);
-            }
-
-            50% {
-                box-shadow: 0 0 25px var(--highlight), 0 0 50px rgba(255, 255, 0, 0.3);
-            }
-        }
-
-        #timer {
-            font-size: 28px;
-            font-weight: bold;
-            text-shadow: 0 0 5px var(--text-color);
-            visibility: hidden;
-        }
-
-        #timer.visible {
-            visibility: visible;
-        }
-
-        #gameArea {
-            position: relative;
-            width: var(--board-size);
-            height: var(--board-size);
-            margin-top: 10px;
-            border: 2px solid var(--text-color);
-            box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
-            box-sizing: content-box;
-            overflow: hidden;
-        }
-
-        /* Full camera preview canvas - shown before game starts */
-        #previewCanvas {
-            position: absolute;
+        /* Full-screen camera canvas */
+        #cameraCanvas {
+            position: fixed;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
             z-index: 0;
         }
 
-        /* START button positioned over the preview */
-        #startOverlay {
-            position: absolute;
+        /* Hand skeleton + box drawing overlay */
+        #handOverlay {
+            position: fixed;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 300;
-            pointer-events: all;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;
+            pointer-events: none;
         }
 
-        #startOverlay.hidden {
+        /* Puzzle container - positioned where the box is drawn */
+        #puzzleContainer {
+            position: fixed;
             display: none;
+            z-index: 20;
+            overflow: hidden;
+            border: 2px solid var(--neon);
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
         }
 
         .puzzle-piece {
@@ -164,7 +72,6 @@
             box-sizing: border-box;
             border: 1px solid rgba(0, 255, 0, 0.3);
             z-index: 1;
-            cursor: grab;
             user-select: none;
             touch-action: none;
             transition: transform 0.1s ease;
@@ -175,8 +82,8 @@
         }
 
         .puzzle-piece.highlight {
-            border: 2px solid var(--highlight);
-            box-shadow: 0 0 15px var(--highlight);
+            border: 2px solid var(--neon-yellow);
+            box-shadow: 0 0 15px var(--neon-yellow);
             z-index: 10;
             transform: scale(1.05);
         }
@@ -193,97 +100,117 @@
             display: block;
         }
 
-        #overlayContainer {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 200;
-        }
-
-        #overlayCanvas {
-            position: absolute;
-            transform-origin: top left;
-        }
-
-        #hiddenVideo {
-            display: none;
-        }
-
-        /* Loading overlay */
-        #loadingOverlay {
-            display: flex;
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.9);
-            color: var(--highlight);
-            justify-content: center;
-            align-items: center;
-            z-index: 400;
-            font-weight: bold;
-            font-size: 16px;
-            text-align: center;
-            padding: 20px;
-            box-sizing: border-box;
-        }
-
-        #loadingOverlay.hidden {
-            display: none;
-        }
-
-        /* Modal */
-        .modal {
-            display: none;
+        /* Thumbnail in top corner */
+        #thumbnail {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.9);
-            z-index: 1000;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
+            top: 15px;
+            left: 15px;
+            border: 2px solid var(--neon);
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+            z-index: 50;
+            display: none;
+            max-width: 120px;
+            max-height: 120px;
         }
 
-        .modal.active {
-            display: flex;
+        /* Timer */
+        #timer {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 8px var(--neon);
+            z-index: 50;
+            display: none;
         }
 
-        .modal-content {
-            border: 2px solid var(--text-color);
-            padding: 30px;
+        /* START button - appears after box is drawn */
+        #startBtn {
+            position: fixed;
+            z-index: 50;
+            display: none;
+            background: rgba(0, 0, 0, 0.7);
+            color: var(--neon-yellow);
+            border: 2px solid var(--neon-yellow);
+            padding: 12px 30px;
+            font-family: var(--font);
+            font-size: 20px;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            cursor: pointer;
+            pointer-events: all;
+            animation: pulseGlow 1.5s ease-in-out infinite;
+        }
+
+        #startBtn:hover {
+            background: var(--neon-yellow);
+            color: #000;
+            box-shadow: 0 0 25px var(--neon-yellow);
+        }
+
+        @keyframes pulseGlow {
+
+            0%,
+            100% {
+                box-shadow: 0 0 8px var(--neon-yellow);
+            }
+
+            50% {
+                box-shadow: 0 0 25px var(--neon-yellow), 0 0 50px rgba(255, 255, 0, 0.3);
+            }
+        }
+
+        /* Instructions */
+        #instructions {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 16px;
+            color: var(--neon);
+            text-shadow: 0 0 8px var(--neon);
+            z-index: 50;
             text-align: center;
-            background: #000;
-            box-shadow: 0 0 20px var(--text-color);
-            max-width: 90%;
-            width: 300px;
+            pointer-events: none;
+            animation: fadeInOut 3s ease-in-out infinite;
         }
 
-        .modal-content h2 {
-            margin-top: 0;
-            color: var(--highlight);
-            text-shadow: 0 0 10px var(--highlight);
+        @keyframes fadeInOut {
+
+            0%,
+            100% {
+                opacity: 0.5;
+            }
+
+            50% {
+                opacity: 1;
+            }
         }
 
-        .modal-content input {
-            background: transparent;
-            border: 1px solid var(--text-color);
-            color: var(--text-color);
-            padding: 10px;
-            font-family: inherit;
-            margin: 15px 0;
-            width: 80%;
-            text-align: center;
-            outline: none;
+        /* Leaderboard button */
+        #btnLeaderboard {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            z-index: 60;
+            background: rgba(0, 0, 0, 0.6);
+            color: var(--neon);
+            border: 1px solid var(--neon);
+            padding: 6px 12px;
+            font-family: var(--font);
+            font-size: 12px;
+            text-transform: uppercase;
+            cursor: pointer;
+            pointer-events: all;
         }
 
-        /* Leaderboard */
+        #btnLeaderboard:hover {
+            background: var(--neon);
+            color: #000;
+        }
+
+        /* Leaderboard panel */
         #leaderboardPanel {
             position: fixed;
             right: -320px;
@@ -291,11 +218,10 @@
             width: 300px;
             height: 100%;
             background: rgba(0, 0, 0, 0.95);
-            border-left: 2px solid var(--text-color);
+            border-left: 2px solid var(--neon);
             z-index: 500;
             padding: 20px;
             transition: right 0.3s ease;
-            box-sizing: border-box;
             overflow-y: auto;
         }
 
@@ -314,78 +240,166 @@
         .close-board {
             text-align: right;
             margin-bottom: 20px;
-            color: var(--highlight);
+            color: var(--neon-yellow);
         }
 
         .close-board span {
             cursor: pointer;
             padding: 5px;
-            border: 1px solid var(--highlight);
+            border: 1px solid var(--neon-yellow);
         }
 
         .close-board span:hover {
-            background: var(--highlight);
+            background: var(--neon-yellow);
             color: #000;
+        }
+
+        /* Win Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            border: 2px solid var(--neon);
+            padding: 30px;
+            text-align: center;
+            background: #000;
+            box-shadow: 0 0 20px var(--neon);
+            max-width: 90%;
+            width: 300px;
+        }
+
+        .modal-content h2 {
+            margin-top: 0;
+            color: var(--neon-yellow);
+            text-shadow: 0 0 10px var(--neon-yellow);
+        }
+
+        .modal-content input {
+            background: transparent;
+            border: 1px solid var(--neon);
+            color: var(--neon);
+            padding: 10px;
+            font-family: var(--font);
+            margin: 15px 0;
+            width: 80%;
+            text-align: center;
+            outline: none;
+        }
+
+        .modal-content button {
+            background: transparent;
+            color: var(--neon);
+            border: 1px solid var(--neon);
+            padding: 8px 16px;
+            font-family: var(--font);
+            font-size: 14px;
+            text-transform: uppercase;
+            cursor: pointer;
+        }
+
+        .modal-content button:hover {
+            background: var(--neon);
+            color: #000;
+        }
+
+        /* Loading */
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            color: var(--neon-yellow);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 900;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        #loadingOverlay.hidden {
+            display: none;
+        }
+
+        #hiddenVideo {
+            display: none;
         }
     </style>
 </head>
 
 <body>
 
-    <header>
-        <div class="controls">
-            <button id="btnLeaderboard">Leaderboard</button>
-        </div>
-        <div id="timer">00:00:000</div>
-    </header>
+    <div id="loadingOverlay">INITIALIZING CAMERA...</div>
 
-    <div id="gameArea">
-        <div id="loadingOverlay">INITIALIZING CAMERA...</div>
+    <!-- Full-screen camera -->
+    <canvas id="cameraCanvas"></canvas>
 
-        <!-- Full camera preview canvas -->
-        <canvas id="previewCanvas"></canvas>
+    <!-- Hand skeleton + box drawing overlay -->
+    <canvas id="handOverlay"></canvas>
 
-        <!-- START button overlay -->
-        <div id="startOverlay" class="hidden">
-            <button class="start-btn" id="btnStart">▶ START</button>
-        </div>
+    <!-- Puzzle container (positioned dynamically) -->
+    <div id="puzzleContainer"></div>
 
-        <!-- Hand skeleton overlay (always visible) -->
-        <div id="overlayContainer">
-            <canvas id="overlayCanvas"></canvas>
-        </div>
-    </div>
+    <!-- Captured image thumbnail -->
+    <canvas id="thumbnail"></canvas>
 
-    <!-- Hidden Video -->
+    <!-- Timer -->
+    <div id="timer">00:00:000</div>
+
+    <!-- START button -->
+    <button id="startBtn">▶ START</button>
+
+    <!-- Instructions -->
+    <div id="instructions">✋ PINCH to draw a box on screen</div>
+
+    <!-- Leaderboard button -->
+    <button id="btnLeaderboard">Leaderboard</button>
+
+    <!-- Hidden video -->
     <video id="hiddenVideo" width="640" height="480" autoplay playsinline muted></video>
 
     <!-- Win Modal -->
     <div id="winModal" class="modal">
         <div class="modal-content">
-            <h2>COMPLETE!</h2>
+            <h2>🧩 COMPLETE!</h2>
             <p>Final Time: <br><strong id="finalTimeDisplay" style="font-size: 24px;"></strong></p>
-            <input type="text" id="playerName" placeholder="Enter Hacker Name" maxlength="15">
+            <input type="text" id="playerName" placeholder="Enter Name" maxlength="15">
             <br>
-            <button id="btnSaveScore">Save & Restart</button>
+            <button id="btnSaveScore">Save & Play Again</button>
         </div>
     </div>
 
-    <!-- Leaderboard -->
+    <!-- Leaderboard Panel -->
     <div id="leaderboardPanel">
         <div class="close-board"><span id="btnCloseBoard">[X] CLOSE</span></div>
-        <h3 style="color: var(--highlight); text-align: center; margin-top:0;">LEADERBOARD</h3>
+        <h3 style="color: var(--neon-yellow); text-align: center; margin-top:0;">LEADERBOARD</h3>
         <div id="leaderboardList"></div>
     </div>
 
     <script>
         // ===========================================
-        // STANDALONE HAND TRACKER MODULE 
+        // HAND TRACKER MODULE
         // ===========================================
         class HandTracker {
             constructor(options) {
                 this.canvasElement = options.canvasElement;
                 this.ctx = this.canvasElement.getContext('2d');
-
                 this.ownsVideoElement = !options.videoElement;
                 this.videoElement = options.videoElement || null;
 
@@ -395,17 +409,13 @@
 
                 this.camera = null;
                 this.hands = null;
-
                 this.isPinching = false;
                 this.grabThreshold = 30;
                 this.releaseThreshold = 50;
-
                 this.lastX = 0;
                 this.lastY = 0;
-
                 this.animationFrameId = null;
                 this.currentLandmarks = null;
-
                 this._onResultsBound = this._onResults.bind(this);
                 this._renderLoopBound = this._renderLoop.bind(this);
             }
@@ -421,27 +431,21 @@
                     document.body.appendChild(this.videoElement);
                     this.ownsVideoElement = true;
                 }
-
                 this.camera = new Camera(this.videoElement, {
                     onFrame: async () => {
-                        if (this.hands) {
-                            await this.hands.send({ image: this.videoElement });
-                        }
+                        if (this.hands) await this.hands.send({ image: this.videoElement });
                     },
-                    width: 640,
-                    height: 480
+                    width: 640, height: 480
                 });
             }
 
             initHands() {
                 this.hands = new Hands({
-                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                    locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
                 });
                 this.hands.setOptions({
-                    maxNumHands: 1,
-                    modelComplexity: 1,
-                    minDetectionConfidence: 0.7,
-                    minTrackingConfidence: 0.7
+                    maxNumHands: 1, modelComplexity: 1,
+                    minDetectionConfidence: 0.7, minTrackingConfidence: 0.7
                 });
                 this.hands.onResults(this._onResultsBound);
             }
@@ -450,7 +454,7 @@
                 if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                     const raw = results.multiHandLandmarks[0];
                     this.currentLandmarks = raw.map(lm => ({
-                        x: 1 - lm.x, y: lm.y, z: lm.z
+                        x: 1 - lm.x, y: lm.y, z: lm.z // Mirror
                     }));
                     this.detectPinch(this.currentLandmarks);
                 } else {
@@ -489,14 +493,12 @@
                     drawLandmarks(this.ctx, this.currentLandmarks, { color: '#ffffff', lineWidth: 1, radius: 4 });
                     const p8 = this.currentLandmarks[8], p4 = this.currentLandmarks[4];
                     const w = this.canvasElement.width, h = this.canvasElement.height;
-                    this.ctx.beginPath();
-                    this.ctx.arc(p8.x * w, p8.y * h, 6, 0, 2 * Math.PI);
-                    this.ctx.fillStyle = this.isPinching ? '#0f0' : '#ff0';
-                    this.ctx.fill();
-                    this.ctx.beginPath();
-                    this.ctx.arc(p4.x * w, p4.y * h, 6, 0, 2 * Math.PI);
-                    this.ctx.fillStyle = this.isPinching ? '#0f0' : '#ff0';
-                    this.ctx.fill();
+                    [p8, p4].forEach(p => {
+                        this.ctx.beginPath();
+                        this.ctx.arc(p.x * w, p.y * h, 6, 0, 2 * Math.PI);
+                        this.ctx.fillStyle = this.isPinching ? '#0f0' : '#ff0';
+                        this.ctx.fill();
+                    });
                     this.ctx.restore();
                 }
                 this.animationFrameId = requestAnimationFrame(this._renderLoopBound);
@@ -505,9 +507,7 @@
             async start() {
                 if (!this.hands) this.initHands();
                 if (!this.camera) this.initCamera();
-                if (!this.animationFrameId) {
-                    this.animationFrameId = requestAnimationFrame(this._renderLoopBound);
-                }
+                if (!this.animationFrameId) this.animationFrameId = requestAnimationFrame(this._renderLoopBound);
                 await this.hands.initialize();
                 await this.camera.start();
             }
@@ -528,34 +528,37 @@
         }
 
         // ===========================================
-        // GAME LOGIC
+        // GAME STATE
         // ===========================================
-
-        const gameState = {
-            phase: "loading",  // "loading" → "preview" → "playing"
-            source: null,
+        const state = {
+            phase: "loading", // loading → drawing → ready → playing
+            // Box coordinates (in screen pixels)
+            boxStartX: 0, boxStartY: 0,
+            boxEndX: 0, boxEndY: 0,
+            isDrawingBox: false,
+            // Puzzle
             pieces: [],
             grabbedPiece: null,
             isPinching: false,
+            capturedImage: null,
+            // Timer
             timerStart: null,
             timerRunning: false,
             elapsedTime: 0,
-            boardSize: 0,
-            pieceSize: 0,
-            sourceWidth: 0,
-            sourceHeight: 0,
-            cropSize: 0,
-            cropX: 0,
-            cropY: 0
+            // Video dimensions
+            videoWidth: 0,
+            videoHeight: 0
         };
 
+        // DOM
         const DOM = {
-            video: document.getElementById('hiddenVideo'),
-            gameArea: document.getElementById('gameArea'),
-            overlayContainer: document.getElementById('overlayContainer'),
-            overlay: document.getElementById('overlayCanvas'),
-            preview: document.getElementById('previewCanvas'),
+            cameraCanvas: document.getElementById('cameraCanvas'),
+            handOverlay: document.getElementById('handOverlay'),
+            puzzleContainer: document.getElementById('puzzleContainer'),
+            thumbnail: document.getElementById('thumbnail'),
             timer: document.getElementById('timer'),
+            startBtn: document.getElementById('startBtn'),
+            instructions: document.getElementById('instructions'),
             btnLeaderboard: document.getElementById('btnLeaderboard'),
             leaderboardPanel: document.getElementById('leaderboardPanel'),
             btnCloseBoard: document.getElementById('btnCloseBoard'),
@@ -564,154 +567,267 @@
             playerName: document.getElementById('playerName'),
             btnSaveScore: document.getElementById('btnSaveScore'),
             loadingOverlay: document.getElementById('loadingOverlay'),
-            startOverlay: document.getElementById('startOverlay'),
-            btnStart: document.getElementById('btnStart')
+            video: document.getElementById('hiddenVideo')
         };
 
-        const previewCtx = DOM.preview.getContext('2d');
+        const camCtx = DOM.cameraCanvas.getContext('2d');
+        const thumbCtx = DOM.thumbnail.getContext('2d');
         let tracker = null;
-        let videoReadyCheckInterval = null;
-        let isManualDragging = false;
-        let manualDragOffset = { x: 0, y: 0 };
 
         // ===========================================
-        // INITIALIZATION
+        // INIT
         // ===========================================
+        async function init() {
+            resizeCanvases();
+            window.addEventListener('resize', resizeCanvases);
 
-        async function initGame() {
-            calculateSizes();
-            window.addEventListener('resize', () => {
-                calculateSizes();
-                if (gameState.phase === 'playing') snapAllToGrid();
-            });
-
+            DOM.startBtn.addEventListener('click', startPuzzle);
             DOM.btnLeaderboard.addEventListener('click', () => DOM.leaderboardPanel.classList.add('open'));
             DOM.btnCloseBoard.addEventListener('click', () => DOM.leaderboardPanel.classList.remove('open'));
             DOM.btnSaveScore.addEventListener('click', saveScore);
-            DOM.btnStart.addEventListener('click', startPuzzle);
 
-            // Mouse & Touch events for puzzle dragging
-            DOM.gameArea.addEventListener('mousedown', manualDragStart);
+            // Mouse/touch drag fallback for puzzle
+            DOM.puzzleContainer.addEventListener('mousedown', manualDragStart);
             document.addEventListener('mousemove', manualDragMove);
             document.addEventListener('mouseup', manualDragEnd);
-            DOM.gameArea.addEventListener('touchstart', manualDragStart, { passive: false });
+            DOM.puzzleContainer.addEventListener('touchstart', manualDragStart, { passive: false });
             document.addEventListener('touchmove', manualDragMove, { passive: false });
             document.addEventListener('touchend', manualDragEnd);
 
             loadLeaderboard();
-            await startCamera();
-            requestAnimationFrame(renderLoop);
-        }
 
-        async function startCamera() {
-            gameState.phase = "loading";
-            gameState.source = DOM.video;
-
+            // Create hand tracker
             tracker = new HandTracker({
-                canvasElement: DOM.overlay,
+                canvasElement: DOM.handOverlay,
                 videoElement: DOM.video,
-                onGrab: (x, y) => {
-                    if (gameState.phase !== 'playing') return;
-                    const pt = mapToBoard(x, y);
-                    gameState.isPinching = true;
-                    tryGrabPiece(pt.x, pt.y);
-                },
-                onMove: (x, y) => {
-                    if (gameState.phase !== 'playing') return;
-                    const pt = mapToBoard(x, y);
-                    handleDrag(pt.x, pt.y);
-                },
-                onRelease: (x, y) => {
-                    if (gameState.phase !== 'playing') return;
-                    gameState.isPinching = false;
-                    releaseGrabbedPiece();
-                }
+                onGrab: onPinchGrab,
+                onMove: onPinchMove,
+                onRelease: onPinchRelease
             });
 
-            // Robust video-ready detection
-            let videoReady = false;
-            const onVideoReady = () => {
-                if (videoReady) return;
-                const vw = DOM.video.videoWidth;
-                const vh = DOM.video.videoHeight;
-                if (!vw || !vh) return;
-                videoReady = true;
-
-                DOM.video.removeEventListener('loadedmetadata', onVideoReady);
-                DOM.video.removeEventListener('loadeddata', onVideoReady);
-                DOM.video.removeEventListener('playing', onVideoReady);
-                if (videoReadyCheckInterval) { clearInterval(videoReadyCheckInterval); videoReadyCheckInterval = null; }
-
-                gameState.sourceWidth = vw;
-                gameState.sourceHeight = vh;
-                calculateSizes();
-
-                // Transition to preview phase
-                gameState.phase = "preview";
-                DOM.loadingOverlay.classList.add('hidden');
-                DOM.startOverlay.classList.remove('hidden');
+            // Wait for video ready
+            let ready = false;
+            const checkVideo = () => {
+                if (ready) return;
+                if (DOM.video.videoWidth > 0 && DOM.video.videoHeight > 0) {
+                    ready = true;
+                    state.videoWidth = DOM.video.videoWidth;
+                    state.videoHeight = DOM.video.videoHeight;
+                    DOM.loadingOverlay.classList.add('hidden');
+                    state.phase = "drawing";
+                    DOM.instructions.style.display = '';
+                }
             };
-
-            DOM.video.addEventListener('loadedmetadata', onVideoReady);
-            DOM.video.addEventListener('loadeddata', onVideoReady);
-            DOM.video.addEventListener('playing', onVideoReady);
-            videoReadyCheckInterval = setInterval(() => {
-                if (DOM.video.videoWidth > 0 && DOM.video.videoHeight > 0) onVideoReady();
+            DOM.video.addEventListener('loadedmetadata', checkVideo);
+            DOM.video.addEventListener('loadeddata', checkVideo);
+            DOM.video.addEventListener('playing', checkVideo);
+            const pollId = setInterval(() => {
+                if (DOM.video.videoWidth > 0) { checkVideo(); if (ready) clearInterval(pollId); }
             }, 250);
 
             try {
                 await tracker.start();
-                onVideoReady();
+                checkVideo();
             } catch (err) {
-                console.error("Camera access error:", err);
-                DOM.loadingOverlay.textContent = "⚠ CAMERA ACCESS DENIED\nPlease allow camera permissions and reload.";
+                console.error("Camera error:", err);
+                DOM.loadingOverlay.textContent = "⚠ CAMERA DENIED - Allow permissions & reload";
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        function resizeCanvases() {
+            const w = window.innerWidth, h = window.innerHeight;
+            DOM.cameraCanvas.width = w;
+            DOM.cameraCanvas.height = h;
+            DOM.handOverlay.width = w;
+            DOM.handOverlay.height = h;
+        }
+
+        // ===========================================
+        // COORDINATE MAPPING: canvas pixels ↔ screen pixels
+        // ===========================================
+        // The hand overlay canvas is screen-sized but the video is 640x480.
+        // HandTracker outputs coordinates in canvas (screen) pixel space
+        // since it multiplies normalized coords by canvas width/height.
+        // So onGrab/onMove/onRelease (x,y) are already in screen pixels.
+
+        function canvasToVideo(screenX, screenY) {
+            // Map screen position to video source position
+            const vw = state.videoWidth, vh = state.videoHeight;
+            const sw = window.innerWidth, sh = window.innerHeight;
+
+            // Cover-fit: find how the video maps to the screen
+            const screenAspect = sw / sh;
+            const videoAspect = vw / vh;
+
+            let drawW, drawH, offsetX, offsetY;
+            if (screenAspect > videoAspect) {
+                drawW = sw;
+                drawH = sw / videoAspect;
+                offsetX = 0;
+                offsetY = (sh - drawH) / 2;
+            } else {
+                drawH = sh;
+                drawW = sh * videoAspect;
+                offsetX = (sw - drawW) / 2;
+                offsetY = 0;
+            }
+
+            // Reverse the mirror: screen is mirrored, so un-mirror X
+            const mirroredX = sw - screenX;
+
+            const videoX = ((mirroredX - offsetX) / drawW) * vw;
+            const videoY = ((screenY - offsetY) / drawH) * vh;
+
+            return { x: Math.max(0, Math.min(videoX, vw)), y: Math.max(0, Math.min(videoY, vh)) };
+        }
+
+        // ===========================================
+        // PINCH GESTURE HANDLERS
+        // ===========================================
+
+        function onPinchGrab(x, y) {
+            if (state.phase === "drawing") {
+                // Start drawing a box
+                state.isDrawingBox = true;
+                state.boxStartX = x;
+                state.boxStartY = y;
+                state.boxEndX = x;
+                state.boxEndY = y;
+            } else if (state.phase === "playing") {
+                // Grab a puzzle piece
+                state.isPinching = true;
+                tryGrabPiece(x, y);
             }
         }
 
+        function onPinchMove(x, y) {
+            if (state.phase === "drawing" && state.isDrawingBox) {
+                state.boxEndX = x;
+                state.boxEndY = y;
+            } else if (state.phase === "playing") {
+                handleDrag(x, y);
+            }
+        }
+
+        function onPinchRelease(x, y) {
+            if (state.phase === "drawing" && state.isDrawingBox) {
+                state.isDrawingBox = false;
+                state.boxEndX = x;
+                state.boxEndY = y;
+                finalizeBox();
+            } else if (state.phase === "playing") {
+                state.isPinching = false;
+                releaseGrabbedPiece();
+            }
+        }
+
+        function finalizeBox() {
+            const bx = getBoxRect();
+            // Minimum box size: 100px
+            if (bx.w > 100 && bx.h > 100) {
+                state.phase = "ready";
+                DOM.instructions.textContent = "📦 Box drawn! Click START to begin";
+
+                // Position START button in center of box
+                DOM.startBtn.style.left = `${bx.x + bx.w / 2 - 60}px`;
+                DOM.startBtn.style.top = `${bx.y + bx.h / 2 - 20}px`;
+                DOM.startBtn.style.display = 'block';
+            } else {
+                // Too small, reset
+                DOM.instructions.textContent = "✋ Too small! PINCH and drag a bigger box";
+            }
+        }
+
+        function getBoxRect() {
+            const x = Math.min(state.boxStartX, state.boxEndX);
+            const y = Math.min(state.boxStartY, state.boxEndY);
+            const w = Math.abs(state.boxEndX - state.boxStartX);
+            const h = Math.abs(state.boxEndY - state.boxStartY);
+            // Make it square using the smaller dimension
+            const side = Math.min(w, h);
+            const cx = x + w / 2;
+            const cy = y + h / 2;
+            return {
+                x: cx - side / 2,
+                y: cy - side / 2,
+                w: side,
+                h: side
+            };
+        }
+
+        // ===========================================
+        // START PUZZLE
+        // ===========================================
+
         function startPuzzle() {
-            DOM.startOverlay.classList.add('hidden');
-            DOM.preview.style.display = 'none'; // Hide the full preview
+            const box = getBoxRect();
+            state.phase = "playing";
 
-            gameState.phase = "playing";
-            DOM.timer.classList.add('visible');
+            DOM.startBtn.style.display = 'none';
+            DOM.instructions.style.display = 'none';
 
-            createPieces();
-            shufflePieces();
+            // Capture the image inside the box from the camera
+            captureBoxImage(box);
+
+            // Position puzzle container at the box location
+            DOM.puzzleContainer.style.left = `${box.x}px`;
+            DOM.puzzleContainer.style.top = `${box.y}px`;
+            DOM.puzzleContainer.style.width = `${box.w}px`;
+            DOM.puzzleContainer.style.height = `${box.h}px`;
+            DOM.puzzleContainer.style.display = 'block';
+
+            // Show thumbnail & timer
+            DOM.thumbnail.style.display = 'block';
+            DOM.timer.style.display = 'block';
+            DOM.btnLeaderboard.style.top = '50px';
+
+            createPieces(box.w);
+            shufflePieces(box.w);
             startTimer();
         }
 
-        // ===========================================
-        // SIZING
-        // ===========================================
+        function captureBoxImage(box) {
+            // Create the captured image from the video source
+            const vw = state.videoWidth, vh = state.videoHeight;
+            const sw = window.innerWidth, sh = window.innerHeight;
 
-        function calculateSizes() {
-            const rect = DOM.gameArea.getBoundingClientRect();
-            gameState.boardSize = rect.width;
-            gameState.pieceSize = rect.width / 3;
-            calculateSourceCrop();
-
-            // Size the preview canvas to match the board
-            DOM.preview.width = rect.width;
-            DOM.preview.height = rect.width; // Square
-
-            if (gameState.sourceWidth && gameState.sourceHeight) {
-                const scale = gameState.boardSize / gameState.cropSize;
-                DOM.overlay.width = gameState.sourceWidth;
-                DOM.overlay.height = gameState.sourceHeight;
-                DOM.overlay.style.width = `${gameState.sourceWidth * scale}px`;
-                DOM.overlay.style.height = `${gameState.sourceHeight * scale}px`;
-                DOM.overlay.style.left = `${-gameState.cropX * scale}px`;
-                DOM.overlay.style.top = `${-gameState.cropY * scale}px`;
+            // Calculate cover-fit mapping
+            const screenAspect = sw / sh;
+            const videoAspect = vw / vh;
+            let drawW, drawH, offsetX, offsetY;
+            if (screenAspect > videoAspect) {
+                drawW = sw; drawH = sw / videoAspect;
+                offsetX = 0; offsetY = (sh - drawH) / 2;
+            } else {
+                drawH = sh; drawW = sh * videoAspect;
+                offsetX = (sw - drawW) / 2; offsetY = 0;
             }
-        }
 
-        function calculateSourceCrop() {
-            const sw = gameState.sourceWidth, sh = gameState.sourceHeight;
-            if (sw && sh) {
-                gameState.cropSize = Math.min(sw, sh);
-                gameState.cropX = (sw - gameState.cropSize) / 2;
-                gameState.cropY = (sh - gameState.cropSize) / 2;
-            }
+            // Map box screen coords to video source coords (un-mirror X)
+            const boxRight = sw - box.x;        // mirrored left edge
+            const boxLeft = sw - (box.x + box.w); // mirrored right edge
+
+            const srcX = ((boxLeft - offsetX) / drawW) * vw;
+            const srcY = ((box.y - offsetY) / drawH) * vh;
+            const srcW = ((boxRight - boxLeft) / drawW) * vw;
+            const srcH = (box.h / drawH) * vh;
+
+            // Capture to an off-screen canvas
+            const capCanvas = document.createElement('canvas');
+            capCanvas.width = box.w;
+            capCanvas.height = box.h;
+            const capCtx = capCanvas.getContext('2d');
+            capCtx.drawImage(DOM.video, srcX, srcY, srcW, srcH, 0, 0, box.w, box.h);
+
+            state.capturedImage = capCanvas;
+
+            // Draw thumbnail
+            const thumbSize = 120;
+            DOM.thumbnail.width = thumbSize;
+            DOM.thumbnail.height = thumbSize;
+            thumbCtx.drawImage(capCanvas, 0, 0, box.w, box.h, 0, 0, thumbSize, thumbSize);
         }
 
         // ===========================================
@@ -719,94 +835,127 @@
         // ===========================================
 
         function renderLoop() {
-            const bs = gameState.boardSize;
-            const cs = gameState.cropSize;
+            const sw = window.innerWidth, sh = window.innerHeight;
+            const vw = state.videoWidth, vh = state.videoHeight;
 
-            if (gameState.source && gameState.sourceWidth) {
-                if (gameState.phase === "preview") {
-                    // Draw full mirrored camera feed onto the preview canvas
-                    previewCtx.save();
-                    previewCtx.scale(-1, 1);
-                    previewCtx.translate(-bs, 0);
-                    previewCtx.drawImage(
-                        gameState.source,
-                        gameState.cropX, gameState.cropY, cs, cs,
-                        0, 0, bs, bs
-                    );
-                    previewCtx.restore();
+            // Draw mirrored camera feed on full-screen canvas
+            if (vw && vh) {
+                const screenAspect = sw / sh;
+                const videoAspect = vw / vh;
+                let drawW, drawH, offsetX, offsetY;
+                if (screenAspect > videoAspect) {
+                    drawW = sw; drawH = sw / videoAspect;
+                    offsetX = 0; offsetY = (sh - drawH) / 2;
+                } else {
+                    drawH = sh; drawW = sh * videoAspect;
+                    offsetX = (sw - drawW) / 2; offsetY = 0;
                 }
 
-                if (gameState.phase === "playing" && gameState.pieces.length === 9) {
-                    const sourcePieceSize = cs / 3;
-                    gameState.pieces.forEach(p => {
-                        const origRow = Math.floor(p.originalIndex / 3);
-                        const origCol = p.originalIndex % 3;
-                        p.canvas.width = gameState.pieceSize;
-                        p.canvas.height = gameState.pieceSize;
-                        const sx = gameState.cropX + origCol * sourcePieceSize;
-                        const sy = gameState.cropY + origRow * sourcePieceSize;
-                        p.ctx.save();
-                        p.ctx.scale(-1, 1);
-                        p.ctx.translate(-gameState.pieceSize, 0);
-                        p.ctx.drawImage(
-                            gameState.source,
-                            sx, sy, sourcePieceSize, sourcePieceSize,
-                            0, 0, gameState.pieceSize, gameState.pieceSize
-                        );
-                        p.ctx.restore();
-                    });
-                }
+                camCtx.save();
+                camCtx.translate(sw, 0);
+                camCtx.scale(-1, 1);
+                camCtx.drawImage(DOM.video, offsetX, offsetY, drawW, drawH);
+                camCtx.restore();
             }
 
-            // Timer
-            if (gameState.timerRunning) {
-                const diff = Date.now() - gameState.timerStart;
+            // Draw the box overlay on hand canvas (on top of skeleton)
+            const hCtx = DOM.handOverlay.getContext('2d');
+            if ((state.phase === "drawing" && state.isDrawingBox) || state.phase === "ready") {
+                const box = getBoxRect();
+                hCtx.save();
+                hCtx.strokeStyle = '#0f0';
+                hCtx.lineWidth = 3;
+                hCtx.setLineDash([8, 4]);
+                hCtx.strokeRect(box.x, box.y, box.w, box.h);
+
+                // Corner markers
+                const cornerSize = 15;
+                hCtx.setLineDash([]);
+                hCtx.lineWidth = 4;
+                hCtx.strokeStyle = '#ff0';
+                // Top-left
+                hCtx.beginPath();
+                hCtx.moveTo(box.x, box.y + cornerSize);
+                hCtx.lineTo(box.x, box.y);
+                hCtx.lineTo(box.x + cornerSize, box.y);
+                hCtx.stroke();
+                // Top-right
+                hCtx.beginPath();
+                hCtx.moveTo(box.x + box.w - cornerSize, box.y);
+                hCtx.lineTo(box.x + box.w, box.y);
+                hCtx.lineTo(box.x + box.w, box.y + cornerSize);
+                hCtx.stroke();
+                // Bottom-left
+                hCtx.beginPath();
+                hCtx.moveTo(box.x, box.y + box.h - cornerSize);
+                hCtx.lineTo(box.x, box.y + box.h);
+                hCtx.lineTo(box.x + cornerSize, box.y + box.h);
+                hCtx.stroke();
+                // Bottom-right
+                hCtx.beginPath();
+                hCtx.moveTo(box.x + box.w - cornerSize, box.y + box.h);
+                hCtx.lineTo(box.x + box.w, box.y + box.h);
+                hCtx.lineTo(box.x + box.w, box.y + box.h - cornerSize);
+                hCtx.stroke();
+
+                // Dimension label
+                hCtx.setLineDash([]);
+                hCtx.font = '14px "Courier New"';
+                hCtx.fillStyle = '#0f0';
+                hCtx.fillText(`${Math.round(box.w)} × ${Math.round(box.h)}`, box.x, box.y - 8);
+
+                hCtx.restore();
+            }
+
+            // Render puzzle pieces from captured image
+            if (state.phase === "playing" && state.capturedImage && state.pieces.length === 9) {
+                const box = getBoxRect();
+                const ps = box.w / 3;
+                state.pieces.forEach(p => {
+                    const origRow = Math.floor(p.originalIndex / 3);
+                    const origCol = p.originalIndex % 3;
+                    p.canvas.width = ps;
+                    p.canvas.height = ps;
+                    const sx = origCol * (state.capturedImage.width / 3);
+                    const sy = origRow * (state.capturedImage.height / 3);
+                    p.ctx.drawImage(
+                        state.capturedImage,
+                        sx, sy, state.capturedImage.width / 3, state.capturedImage.height / 3,
+                        0, 0, ps, ps
+                    );
+                });
+            }
+
+            // Timer update
+            if (state.timerRunning) {
+                const diff = Date.now() - state.timerStart;
                 const m = Math.floor(diff / 60000).toString().padStart(2, '0');
                 const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
                 const ms = (diff % 1000).toString().padStart(3, '0');
                 DOM.timer.innerText = `${m}:${s}:${ms}`;
-                gameState.elapsedTime = diff;
+                state.elapsedTime = diff;
             }
 
             requestAnimationFrame(renderLoop);
         }
 
         // ===========================================
-        // COORDINATE MAPPING
-        // ===========================================
-
-        function mapToBoard(canvasX, canvasY) {
-            if (!gameState.sourceWidth) return { x: 0, y: 0 };
-            const scale = gameState.boardSize / gameState.cropSize;
-            return {
-                x: (canvasX - gameState.cropX) * scale,
-                y: (canvasY - gameState.cropY) * scale
-            };
-        }
-
-        // ===========================================
         // PUZZLE PIECES
         // ===========================================
 
-        function clearBoard() {
-            document.querySelectorAll('.puzzle-piece').forEach(el => el.remove());
-            gameState.pieces = [];
-            gameState.grabbedPiece = null;
-            gameState.isPinching = false;
-        }
-
-        function createPieces() {
+        function createPieces(boxSize) {
             clearBoard();
+            const ps = boxSize / 3;
             const pcs = [];
             for (let i = 0; i < 9; i++) {
                 const piece = document.createElement('div');
                 piece.className = 'puzzle-piece';
-                piece.style.width = `${gameState.pieceSize}px`;
-                piece.style.height = `${gameState.pieceSize}px`;
+                piece.style.width = `${ps}px`;
+                piece.style.height = `${ps}px`;
                 const canvas = document.createElement('canvas');
                 canvas.className = 'piece-canvas';
                 piece.appendChild(canvas);
-                DOM.gameArea.appendChild(piece);
+                DOM.puzzleContainer.appendChild(piece);
                 pcs.push({
                     el: piece,
                     ctx: canvas.getContext('2d'),
@@ -815,84 +964,101 @@
                     currentIndex: i
                 });
             }
-            gameState.pieces = pcs;
+            state.pieces = pcs;
         }
 
-        function shufflePieces() {
+        function shufflePieces(boxSize) {
+            const ps = boxSize / 3;
             let idx = [0, 1, 2, 3, 4, 5, 6, 7, 8];
             for (let i = 8; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [idx[i], idx[j]] = [idx[j], idx[i]];
             }
             if (idx.every((v, i) => v === i)) [idx[0], idx[1]] = [idx[1], idx[0]];
-            gameState.pieces.forEach((p, i) => {
+            state.pieces.forEach((p, i) => {
                 p.currentIndex = idx[i];
                 p.el.classList.add('snapping');
             });
-            snapAllToGrid();
+            snapAllToGrid(ps);
         }
 
-        function snapAllToGrid() {
-            gameState.pieces.forEach(p => {
-                p.el.style.width = `${gameState.pieceSize}px`;
-                p.el.style.height = `${gameState.pieceSize}px`;
+        function snapAllToGrid(ps) {
+            if (!ps) ps = getBoxRect().w / 3;
+            state.pieces.forEach(p => {
+                p.el.style.width = `${ps}px`;
+                p.el.style.height = `${ps}px`;
                 const row = Math.floor(p.currentIndex / 3);
                 const col = p.currentIndex % 3;
-                p.el.style.left = `${col * gameState.pieceSize}px`;
-                p.el.style.top = `${row * gameState.pieceSize}px`;
+                p.el.style.left = `${col * ps}px`;
+                p.el.style.top = `${row * ps}px`;
             });
         }
 
+        function clearBoard() {
+            DOM.puzzleContainer.querySelectorAll('.puzzle-piece').forEach(el => el.remove());
+            state.pieces = [];
+            state.grabbedPiece = null;
+            state.isPinching = false;
+        }
+
         // ===========================================
-        // DRAG & DROP
+        // DRAG & DROP (Hand gesture)
         // ===========================================
 
-        function tryGrabPiece(x, y) {
+        function tryGrabPiece(screenX, screenY) {
+            // Convert screen coords to puzzle container coords
+            const box = getBoxRect();
+            const localX = screenX - box.x;
+            const localY = screenY - box.y;
+            const ps = box.w / 3;
+
             let grabbed = null;
-            for (let i = gameState.pieces.length - 1; i >= 0; i--) {
-                const p = gameState.pieces[i];
+            for (let i = state.pieces.length - 1; i >= 0; i--) {
+                const p = state.pieces[i];
                 const px = parseFloat(p.el.style.left) || 0;
                 const py = parseFloat(p.el.style.top) || 0;
-                const ps = gameState.pieceSize;
-                if (x >= px && x <= px + ps && y >= py && y <= py + ps) {
+                if (localX >= px && localX <= px + ps && localY >= py && localY <= py + ps) {
                     grabbed = p;
                     break;
                 }
             }
-            if (grabbed && !gameState.grabbedPiece) {
-                gameState.grabbedPiece = grabbed;
+            if (grabbed && !state.grabbedPiece) {
+                state.grabbedPiece = grabbed;
                 grabbed.el.classList.remove('snapping');
                 grabbed.el.classList.add('highlight', 'dragging');
             }
         }
 
-        function handleDrag(x, y) {
-            if (!gameState.grabbedPiece) return;
-            const p = gameState.grabbedPiece;
-            const ps = gameState.pieceSize;
-            let nx = Math.max(0, Math.min(x - ps / 2, gameState.boardSize - ps));
-            let ny = Math.max(0, Math.min(y - ps / 2, gameState.boardSize - ps));
-            p.el.style.left = `${nx}px`;
-            p.el.style.top = `${ny}px`;
+        function handleDrag(screenX, screenY) {
+            if (!state.grabbedPiece) return;
+            const box = getBoxRect();
+            const ps = box.w / 3;
+            const localX = screenX - box.x;
+            const localY = screenY - box.y;
+            let nx = Math.max(0, Math.min(localX - ps / 2, box.w - ps));
+            let ny = Math.max(0, Math.min(localY - ps / 2, box.h - ps));
+            state.grabbedPiece.el.style.left = `${nx}px`;
+            state.grabbedPiece.el.style.top = `${ny}px`;
         }
 
         function releaseGrabbedPiece() {
-            if (!gameState.grabbedPiece) return;
-            const p = gameState.grabbedPiece;
+            if (!state.grabbedPiece) return;
+            const p = state.grabbedPiece;
             p.el.classList.remove('highlight', 'dragging');
-            gameState.grabbedPiece = null;
+            state.grabbedPiece = null;
             snapToGrid(p);
         }
 
         function snapToGrid(p) {
-            const ps = gameState.pieceSize;
+            const box = getBoxRect();
+            const ps = box.w / 3;
             const cx = (parseFloat(p.el.style.left) || 0) + ps / 2;
             const cy = (parseFloat(p.el.style.top) || 0) + ps / 2;
             let col = Math.max(0, Math.min(Math.floor(cx / ps), 2));
             let row = Math.max(0, Math.min(Math.floor(cy / ps), 2));
             const targetIdx = row * 3 + col;
 
-            const existing = gameState.pieces.find(op => op !== p && op.currentIndex === targetIdx);
+            const existing = state.pieces.find(op => op !== p && op.currentIndex === targetIdx);
             p.el.classList.add('snapping');
             if (existing) {
                 existing.el.classList.add('snapping');
@@ -909,44 +1075,47 @@
         }
 
         // ===========================================
-        // MANUAL DRAG (Mouse/Touch)
+        // MANUAL DRAG (Mouse/Touch fallback)
         // ===========================================
+        let isManualDragging = false;
+        let manualOffset = { x: 0, y: 0 };
 
         function manualDragStart(e) {
-            if (gameState.phase !== 'playing' || gameState.isPinching) return;
+            if (state.phase !== 'playing' || state.isPinching) return;
             const target = e.target.closest('.puzzle-piece');
             if (!target) return;
             if (e.type === 'touchstart') e.preventDefault();
 
-            const p = gameState.pieces.find(p => p.el === target);
-            if (p && !gameState.grabbedPiece) {
-                gameState.grabbedPiece = p;
+            const p = state.pieces.find(p => p.el === target);
+            if (p && !state.grabbedPiece) {
+                state.grabbedPiece = p;
                 p.el.classList.remove('snapping');
                 p.el.classList.add('highlight', 'dragging');
                 isManualDragging = true;
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                 const rect = p.el.getBoundingClientRect();
-                manualDragOffset.x = clientX - rect.left;
-                manualDragOffset.y = clientY - rect.top;
+                manualOffset.x = clientX - rect.left;
+                manualOffset.y = clientY - rect.top;
             }
         }
 
         function manualDragMove(e) {
-            if (!isManualDragging || !gameState.grabbedPiece) return;
+            if (!isManualDragging || !state.grabbedPiece) return;
             if (e.type === 'touchmove') e.preventDefault();
             const clientX = e.touches ? e.touches[0].clientX : e.clientX;
             const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            const boardRect = DOM.gameArea.getBoundingClientRect();
-            const ps = gameState.pieceSize;
-            let nx = Math.max(0, Math.min(clientX - boardRect.left - manualDragOffset.x, gameState.boardSize - ps));
-            let ny = Math.max(0, Math.min(clientY - boardRect.top - manualDragOffset.y, gameState.boardSize - ps));
-            gameState.grabbedPiece.el.style.left = `${nx}px`;
-            gameState.grabbedPiece.el.style.top = `${ny}px`;
+            const containerRect = DOM.puzzleContainer.getBoundingClientRect();
+            const box = getBoxRect();
+            const ps = box.w / 3;
+            let nx = Math.max(0, Math.min(clientX - containerRect.left - manualOffset.x, box.w - ps));
+            let ny = Math.max(0, Math.min(clientY - containerRect.top - manualOffset.y, box.h - ps));
+            state.grabbedPiece.el.style.left = `${nx}px`;
+            state.grabbedPiece.el.style.top = `${ny}px`;
         }
 
-        function manualDragEnd(e) {
-            if (!isManualDragging || !gameState.grabbedPiece) return;
+        function manualDragEnd() {
+            if (!isManualDragging || !state.grabbedPiece) return;
             isManualDragging = false;
             releaseGrabbedPiece();
         }
@@ -956,18 +1125,16 @@
         // ===========================================
 
         function startTimer() {
-            gameState.timerStart = Date.now();
-            gameState.timerRunning = true;
+            state.timerStart = Date.now();
+            state.timerRunning = true;
         }
 
-        function stopTimer() {
-            gameState.timerRunning = false;
-        }
+        function stopTimer() { state.timerRunning = false; }
 
         function checkWin() {
-            if (!gameState.timerRunning) return;
+            if (!state.timerRunning) return;
             setTimeout(() => {
-                if (gameState.pieces.every(p => p.originalIndex === p.currentIndex)) {
+                if (state.pieces.every(p => p.originalIndex === p.currentIndex)) {
                     stopTimer();
                     DOM.finalTimeDisplay.innerText = DOM.timer.innerText;
                     DOM.winModal.classList.add('active');
@@ -995,9 +1162,9 @@
         }
 
         function saveScore() {
-            const name = DOM.playerName.value.trim() || "Unknown Hacker";
+            const name = DOM.playerName.value.trim() || "Anon";
             const timeText = DOM.finalTimeDisplay.innerText;
-            const timeValue = gameState.elapsedTime;
+            const timeValue = state.elapsedTime;
             const scores = JSON.parse(localStorage.getItem('puzzleScores') || '[]');
             scores.push({ name, timeText, timeValue });
             scores.sort((a, b) => a.timeValue - b.timeValue);
@@ -1009,18 +1176,27 @@
             loadLeaderboard();
             DOM.leaderboardPanel.classList.add('open');
 
-            // Reset to preview mode
-            gameState.phase = 'preview';
-            DOM.timer.classList.remove('visible');
-            DOM.timer.innerText = '00:00:000';
+            // Reset to drawing phase
+            resetToDrawing();
+        }
+
+        function resetToDrawing() {
+            state.phase = 'drawing';
+            state.timerRunning = false;
+            state.capturedImage = null;
             clearBoard();
-            DOM.preview.style.display = '';
-            DOM.startOverlay.classList.remove('hidden');
-            stopTimer();
+            DOM.puzzleContainer.style.display = 'none';
+            DOM.thumbnail.style.display = 'none';
+            DOM.timer.style.display = 'none';
+            DOM.timer.innerText = '00:00:000';
+            DOM.instructions.textContent = '✋ PINCH to draw a box on screen';
+            DOM.instructions.style.display = '';
+            DOM.startBtn.style.display = 'none';
+            DOM.btnLeaderboard.style.top = '15px';
         }
 
         // Boot
-        window.addEventListener('load', initGame);
+        window.addEventListener('load', init);
     </script>
 </body>
 
